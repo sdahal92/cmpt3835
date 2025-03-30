@@ -1,57 +1,23 @@
-# app.py
-import streamlit as st
-import pandas as pd
-import joblib
+import shap
+import matplotlib.pyplot as plt
 
-# Load the trained model
-model = joblib.load("client_retention_model.pkl")
+# Get model and preprocessor from pipeline
+model_only = model.named_steps['classifier']
+preprocessor = model.named_steps['preprocessing']
 
-st.title("🔄 Client Retention Predictor")
+# Preprocess input to match model
+input_transformed = preprocessor.transform(input_df)
 
-st.write("Predict whether a client is likely to return based on their profile.")
+# Create SHAP explainer (TreeExplainer works with GradientBoosting)
+explainer = shap.Explainer(model_only, feature_names=preprocessor.get_feature_names_out())
 
-# Input form
-with st.form("prediction_form"):
-    contact_method = st.selectbox("Contact Method", ['phone', 'email', 'in-person'])
-    household = st.selectbox("Household Type", ['single', 'family'])
-    preferred_language = st.selectbox("Preferred Language", ['english', 'other'])
-    sex = st.selectbox("Sex", ['male', 'female'])
-    status = st.selectbox("Status", ['new', 'returning', 'inactive'])
-    season = st.selectbox("Season", ['Spring', 'Summer', 'Fall', 'Winter'])
-    month = st.selectbox("Month", ['January', 'February', 'March', 'April', 'May', 'June',
-                                   'July', 'August', 'September', 'October', 'November', 'December'])
-    latest_lang_english = st.selectbox("Latest Language is English", ['yes', 'no'])
+# Calculate SHAP values for the single instance
+shap_values = explainer(input_transformed)
 
-    age = st.slider("Age", 18, 100, 35)
-    dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
-    distance_km = st.number_input("Distance to Location (km)", 0.0, 50.0, 5.0)
-    num_of_contact_methods = st.slider("Number of Contact Methods", 1, 5, 2)
+# Visualize SHAP
+st.subheader("🧠 SHAP Explanation (Why this prediction?)")
 
-    submitted = st.form_submit_button("Predict")
-
-# Prepare input and predict
-if submitted:
-    input_df = pd.DataFrame([{
-        'contact_method': contact_method,
-        'household': household,
-        'preferred_languages': preferred_language,
-        'sex_new': sex,
-        'status': status,
-        'Season': season,
-        'Month': month,
-        'latest_language_is_english': latest_lang_english,
-        'age': age,
-        'dependents_qty': dependents_qty,
-        'distance_km': distance_km,
-        'num_of_contact_methods': num_of_contact_methods
-    }])
-
-    prediction = model.predict(input_df)[0]
-    probability = model.predict_proba(input_df)[0][1]
-
-    st.markdown("---")
-    st.subheader("Prediction Result:")
-    if prediction == 1:
-        st.success(f"✅ Client is likely to return (Probability: {round(probability, 2)})")
-    else:
-        st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")
+# Plot waterfall
+fig, ax = plt.subplots(figsize=(10, 5))
+shap.plots.waterfall(shap_values[0], max_display=10, show=False)
+st.pyplot(fig)
