@@ -3,47 +3,31 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-# Load the trained model
+# Load the trained pipeline (preprocessing + model)
 model = joblib.load("client_retention_model.pkl")
 
-st.title("🔄 Client Retention Predictor")
-
-st.write("Predict whether a client is likely to return based on their profile.")
+st.title("🔁 Client Retention Predictor")
+st.write("Enter client information to predict if they will return, using the top 5 most important features.")
 
 # Input form
-with st.form("prediction_form"):
-    contact_method = st.selectbox("Contact Method", ['phone', 'email', 'in-person'])
-    household = st.selectbox("Household Type", ['single', 'family'])
-    preferred_language = st.selectbox("Preferred Language", ['english', 'other'])
-    sex = st.selectbox("Sex", ['male', 'female'])
-    status = st.selectbox("Status", ['new', 'returning', 'inactive'])
+with st.form("input_form"):
     season = st.selectbox("Season", ['Spring', 'Summer', 'Fall', 'Winter'])
     month = st.selectbox("Month", ['January', 'February', 'March', 'April', 'May', 'June',
                                    'July', 'August', 'September', 'October', 'November', 'December'])
-    latest_lang_english = st.selectbox("Latest Language is English", ['yes', 'no'])
-
-    age = st.slider("Age", 18, 100, 35)
-    dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
-    distance_km = st.number_input("Distance to Location (km)", 0.0, 50.0, 5.0)
-    num_of_contact_methods = st.slider("Number of Contact Methods", 1, 5, 2)
+    preferred_language = st.selectbox("Preferred Language", ['english', 'other'])
+    distance_km = st.number_input("Distance to Location (km)", min_value=0.0, max_value=50.0, value=5.0)
+    age = st.slider("Age", min_value=18, max_value=100, value=35)
 
     submitted = st.form_submit_button("Predict")
 
-# Prepare input and predict
+# Predict and show results
 if submitted:
     input_df = pd.DataFrame([{
-        'contact_method': contact_method,
-        'household': household,
-        'preferred_languages': preferred_language,
-        'sex_new': sex,
-        'status': status,
         'Season': season,
         'Month': month,
-        'latest_language_is_english': latest_lang_english,
-        'age': age,
-        'dependents_qty': dependents_qty,
+        'preferred_languages': preferred_language,
         'distance_km': distance_km,
-        'num_of_contact_methods': num_of_contact_methods
+        'age': age
     }])
 
     prediction = model.predict(input_df)[0]
@@ -51,7 +35,8 @@ if submitted:
 
     st.markdown("---")
     st.subheader("Prediction Result:")
+
     if prediction == 1:
-        st.success(f"✅ Client is likely to return (Probability: {round(probability, 2)})")
+        st.success(f"✅ Client is **likely to return** (Probability: {round(probability, 2)})")
     else:
-        st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")
+        st.warning(f"⚠️ Client is **unlikely to return** (Probability: {round(probability, 2)})")
