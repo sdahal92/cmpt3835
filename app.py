@@ -1,56 +1,57 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import joblib
-import shap
-import matplotlib.pyplot as plt
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-# Load model
+# Load the trained model
 model = joblib.load("client_retention_model.pkl")
 
-# Get pipeline components
-preprocessor = model.named_steps['preprocessing']
-classifier = model.named_steps['classifier']
+st.title("🔄 Client Retention Predictor")
 
-# Define your categorical and numerical columns again (must match training)
-categorical_cols = ['contact_method', 'household', 'preferred_languages', 'sex_new', 'status', 'Season', 'Month', 'latest_language_is_english']
-numerical_cols = ['age', 'dependents_qty', 'distance_km', 'num_of_contact_methods']
+st.write("Predict whether a client is likely to return based on their profile.")
 
-# Streamlit App
-st.title("Client Retention Prediction")
-st.write("Fill in the details below to predict if a client will return.")
+# Input form
+with st.form("prediction_form"):
+    contact_method = st.selectbox("Contact Method", ['phone', 'email', 'in-person'])
+    household = st.selectbox("Household Type", ['single', 'family'])
+    preferred_language = st.selectbox("Preferred Language", ['english', 'other'])
+    sex = st.selectbox("Sex", ['male', 'female'])
+    status = st.selectbox("Status", ['new', 'returning', 'inactive'])
+    season = st.selectbox("Season", ['Spring', 'Summer', 'Fall', 'Winter'])
+    month = st.selectbox("Month", ['January', 'February', 'March', 'April', 'May', 'June',
+                                   'July', 'August', 'September', 'October', 'November', 'December'])
+    latest_lang_english = st.selectbox("Latest Language is English", ['yes', 'no'])
 
-# Input fields
-input_data = {}
-for col in categorical_cols:
-    options = ['value1', 'value2']  # Replace with your actual unique values
-    input_data[col] = st.selectbox(f"{col}:", options)
+    age = st.slider("Age", 18, 100, 35)
+    dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
+    distance_km = st.number_input("Distance to Location (km)", 0.0, 50.0, 5.0)
+    num_of_contact_methods = st.slider("Number of Contact Methods", 1, 5, 2)
 
-for col in numerical_cols:
-    input_data[col] = st.number_input(f"{col}:", value=0.0)
+    submitted = st.form_submit_button("Predict")
 
-# When user clicks "Predict"
-if st.button("Predict"):
-    input_df = pd.DataFrame([input_data])
-    
-    # Preprocess input
-    input_transformed = preprocessor.transform(input_df)
+# Prepare input and predict
+if submitted:
+    input_df = pd.DataFrame([{
+        'contact_method': contact_method,
+        'household': household,
+        'preferred_languages': preferred_language,
+        'sex_new': sex,
+        'status': status,
+        'Season': season,
+        'Month': month,
+        'latest_language_is_english': latest_lang_english,
+        'age': age,
+        'dependents_qty': dependents_qty,
+        'distance_km': distance_km,
+        'num_of_contact_methods': num_of_contact_methods
+    }])
 
-    # Predict
-    prediction = classifier.predict(input_transformed)[0]
-    prediction_proba = classifier.predict_proba(input_transformed)[0][1]
-    
+    prediction = model.predict(input_df)[0]
+    probability = model.predict_proba(input_df)[0][1]
+
+    st.markdown("---")
     st.subheader("Prediction Result:")
-    st.write("✅ Likely to Return" if prediction == 1 else "❌ Unlikely to Return")
-    st.write(f"Confidence: {prediction_proba:.2f}")
-    
-    # SHAP Explanation
-    st.subheader("SHAP Explanation (Why this prediction?)")
-    explainer = shap.Explainer(classifier, preprocessor.transform)
-    shap_values = explainer(input_df)
-
-    # Plot SHAP
-    fig, ax = plt.subplots()
-    shap.plots.waterfall(shap_values[0], max_display=10, show=False)
-    st.pyplot(fig)
+    if prediction == 1:
+        st.success(f"✅ Client is likely to return (Probability: {round(probability, 2)})")
+    else:
+        st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")
