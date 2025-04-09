@@ -1,59 +1,134 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import joblib
+from sentence_transformers import SentenceTransformer, util
+from transformers import pipeline
 
-# Load the trained model
+# ------------------------------------------------------------------------
+# Load Machine Learning model
+# ------------------------------------------------------------------------
 model = joblib.load("client_retention_model.pkl")
 
-st.title("🔄 Client Retention Predictor")
+# ------------------------------------------------------------------------
+# Load Chatbot CSV (expects only a 'chunk' column)
+# ------------------------------------------------------------------------
+df_chunks = pd.read_csv("chatbot_chunks_combined_improved (version 1).csv")
 
-st.write("Predict whether a client is likely to return based on their profile.")
+# Use index as key and chunk as content
+documents = dict(enumerate(df_chunks["chunk"]))
 
-# Input form
-with st.form("prediction_form"):
-    contact_method = st.selectbox("Contact Method", ['phone', 'email', 'in-person'])
-    household = st.selectbox("Household Type", ['single', 'family'])
-    preferred_language = st.selectbox("Preferred Language", ['english', 'other'])
-    sex = st.selectbox("Sex", ['male', 'female'])
-    status = st.selectbox("Status", ['new', 'returning', 'inactive'])
-    season = st.selectbox("Season", ['Spring', 'Summer', 'Fall', 'Winter'])
-    month = st.selectbox("Month", ['January', 'February', 'March', 'April', 'May', 'June',
-                                   'July', 'August', 'September', 'October', 'November', 'December'])
-    latest_lang_english = st.selectbox("Latest Language is English", ['yes', 'no'])
+# ------------------------------------------------------------------------
+# Set up sentence transformer model for embeddings
+# ------------------------------------------------------------------------
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
+doc_embeddings = {
+    doc_id: embedder.encode(text, convert_to_tensor=True)
+    for doc_id, text in documents.items()
+}
 
-    age = st.slider("Age", 18, 100, 35)
-    dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
-    distance_km = st.number_input("Distance to Location (km)", 0.0, 100.0, 5.0)
-    num_of_contact_methods = st.slider("Number of Contact Methods", 1, 5, 2)
+# ------------------------------------------------------------------------
+# Retrieval function: fetch top-k relevant chunks
+# ------------------------------------------------------------------------
+def retrieve_context(query, top_k=3):
+    query_embedding = embedder.encode(query, convert_to_tensor=True)
+    scores = {
+        doc_id: util.pytorch_cos_sim(query_embedding, emb).item()
+        for doc_id, emb in doc_embeddings.items()
+    }
+    top_doc_ids = sorted(scores, key=scores.get, reverse=True)[:top_k]
+    return "\n\n".join([documents[doc_id] for doc_id in top_doc_ids])
 
-    submitted = st.form_submit_button("Predict")
+# ------------------------------------------------------------------------
+# Text generation using FLAN-T5
+# ------------------------------------------------------------------------
+generator = pipeline("text2text-generation", model="google/flan-t5-large")
 
-# Prepare input and predict
-if submitted:
-    input_df = pd.DataFrame([{
-        'contact_method': contact_method,
-        'household': household,
-        'preferred_languages': preferred_language,
-        'sex_new': sex,
-        'status': status,
-        'Season': season,
-        'Month': month,
-        'latest_language_is_english': latest_lang_english,
-        'age': age,
-        'dependents_qty': dependents_qty,
-        'distance_km': distance_km,
-        'num_of_contact_methods': num_of_contact_methods
-    }])
+def query_llm(query, context):
+    prompt = (
+        "You are a helpful assistant with access to client retention insights.\n\n"
+        f"Context:\n{context}\n\n"
+        f"User Query: {query}\n\n"
+        "Answer:"
+    )
+    result = generator(prompt, max_new_tokens=150, temperature=0.7)[0]['generated_text']
+    return result.replace(prompt, "").strip()
 
-    prediction = model.predict(input_df)[0]
-    probability = model.predict_proba(input_df)[0][1]
+def rag_chatbot(query):
+    context = retrieve_context(query, top_k=3)
+    return query_llm(query, context)
 
-    st.markdown("---")
-    st.subheader("Prediction Result:")
-    if prediction == 1:
-        st.success(f"✅ Client is likely to return (Probability: {round(probability, 2)})")
-    else:
-        st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")  
+# ------------------------------------------------------------------------
+# Streamlit UI
+# ------------------------------------------------------------------------
+st.set_page_config(page_title="Client Retention & Chatbot", layout="wide")
+st.title("🔄 Client Retention Predictor & 🤖 Chatbot Assistant")
 
+col1, col2 = st.columns([1, 4])
 
+with col1:
+    page = st.radio("Choose a section", ["Client Retention Predictor", "Feature Analysis Graphs", "Chatbot"])
+
+with col2:
+
+    # ------------------ Predictor ------------------
+    if page == "Client Retention Predictor":
+        st.subheader("📊 Predict Client Retention")
+        with st.form("prediction_form"):
+            contact_method = st.selectbox("Contact Method", ['phone', 'email', 'in-person'])
+            household = st.selectbox("Household Type", ['single', 'family'])
+            preferred_language = st.selectbox("Preferred Language", ['english', 'other'])
+            sex = st.selectbox("Sex", ['male', 'female'])
+            status = st.selectbox("Status", ['new', 'returning', 'inactive'])
+            season = st.selectbox("Season", ['Spring', 'Summer', 'Fall', 'Winter'])
+            month = st.selectbox("Month", [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ])
+            latest_lang_english = st.selectbox("Latest Language is English", ['yes', 'no'])
+            age = st.slider("Age", 18, 100, 35)
+            dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
+            distance_km = st.number_input("Distance to Location (km)", 0.0, 50.0, 5.0)
+            num_of_contact_methods = st.slider("Number of Contact Methods", 1, 5, 2)
+            submitted = st.form_submit_button("Predict")
+
+        if submitted:
+            input_df = pd.DataFrame([{
+                'contact_method': contact_method,
+                'household': household,
+                'preferred_languages': preferred_language,
+                'sex_new': sex,
+                'status': status,
+                'Season': season,
+                'Month': month,
+                'latest_language_is_english': latest_lang_english,
+                'age': age,
+                'dependents_qty': dependents_qty,
+                'distance_km': distance_km,
+                'num_of_contact_methods': num_of_contact_methods
+            }])
+            prediction = model.predict(input_df)[0]
+            probability = model.predict_proba(input_df)[0][1]
+
+            st.markdown("---")
+            st.subheader("Prediction Result:")
+            if prediction == 1:
+                st.success(f"✅ Client is likely to return (Probability: {round(probability, 2)})")
+            else:
+                st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")
+
+    # ------------------ Graphs ------------------
+    elif page == "Feature Analysis Graphs":
+        st.subheader("📈 Feature Importance Plot")
+        st.image("Graphs/fiupdate.png", caption="Feature Importance", use_container_width=True)
+        st.markdown("---")
+        st.subheader("📊 Waterfall Prediction Graph")
+        st.image("Graphs/waterfall.png", caption="Waterfall Graph", use_container_width=True)
+
+    # ------------------ Chatbot ------------------
+    elif page == "Chatbot":
+        st.subheader("🤖 Ask the Client Insights Chatbot")
+        user_query = st.text_input("Ask a question about client behavior, pickups, languages, etc.")
+        if user_query:
+            with st.spinner("Thinking..."):
+                response = rag_chatbot(user_query)
+                st.success(response)
