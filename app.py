@@ -54,6 +54,6 @@ if submitted:
     if prediction == 1:
         st.success(f"✅ Client is likely to return (Probability: {round(probability, 2)})")
     else:
-        st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")    ok keep it like this 
+        st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")  
 
 
