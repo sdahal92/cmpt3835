@@ -4,31 +4,28 @@ import joblib
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline
 
-# ------------------------------------------------------------------------
-# Load Machine Learning model
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Load ML Model
+# ------------------------------------------------------------------------------
 model = joblib.load("client_retention_model.pkl")
 
-# ------------------------------------------------------------------------
-# Load Chatbot CSV (expects only a 'chunk' column)
-# ------------------------------------------------------------------------
-df_chunks = pd.read_csv("chatbot_chunks_combined_improved (version 1).csv")
-
-# Use index as key and chunk as content
+# ------------------------------------------------------------------------------
+# Load CSV Chunks for Chatbot (ensure file has one unnamed column)
+# ------------------------------------------------------------------------------
+df_chunks = pd.read_csv("chatbot_chunks_combined_improved (version 1).csv", header=None, skiprows=2)
+df_chunks.columns = ["chunk"]
 documents = dict(enumerate(df_chunks["chunk"]))
 
-# ------------------------------------------------------------------------
-# Set up sentence transformer model for embeddings
-# ------------------------------------------------------------------------
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+# ------------------------------------------------------------------------------
+# Embeddings & Retrieval
+# ------------------------------------------------------------------------------
+embedder = SentenceTransformer("models/all-MiniLM-L6-v2")  # Local model folder
+
 doc_embeddings = {
     doc_id: embedder.encode(text, convert_to_tensor=True)
     for doc_id, text in documents.items()
 }
 
-# ------------------------------------------------------------------------
-# Retrieval function: fetch top-k relevant chunks
-# ------------------------------------------------------------------------
 def retrieve_context(query, top_k=3):
     query_embedding = embedder.encode(query, convert_to_tensor=True)
     scores = {
@@ -38,14 +35,14 @@ def retrieve_context(query, top_k=3):
     top_doc_ids = sorted(scores, key=scores.get, reverse=True)[:top_k]
     return "\n\n".join([documents[doc_id] for doc_id in top_doc_ids])
 
-# ------------------------------------------------------------------------
-# Text generation using FLAN-T5
-# ------------------------------------------------------------------------
-generator = pipeline("text2text-generation", model="google/flan-t5-large")
+# ------------------------------------------------------------------------------
+# LLM Setup (load FLAN-T5 locally)
+# ------------------------------------------------------------------------------
+generator = pipeline("text2text-generation", model="models/flan-t5-large")
 
 def query_llm(query, context):
     prompt = (
-        "You are a helpful assistant with access to client retention insights.\n\n"
+        "You are a helpful assistant with access to client data summaries.\n\n"
         f"Context:\n{context}\n\n"
         f"User Query: {query}\n\n"
         "Answer:"
@@ -57,11 +54,11 @@ def rag_chatbot(query):
     context = retrieve_context(query, top_k=3)
     return query_llm(query, context)
 
-# ------------------------------------------------------------------------
-# Streamlit UI
-# ------------------------------------------------------------------------
-st.set_page_config(page_title="Client Retention & Chatbot", layout="wide")
-st.title("🔄 Client Retention Predictor & 🤖 Chatbot Assistant")
+# ------------------------------------------------------------------------------
+# Streamlit App
+# ------------------------------------------------------------------------------
+st.set_page_config(page_title="Client Retention App", layout="wide")
+st.title("🔄 Client Retention Predictor & 📚 Chatbot Assistant")
 
 col1, col2 = st.columns([1, 4])
 
@@ -70,7 +67,6 @@ with col1:
 
 with col2:
 
-    # ------------------ Predictor ------------------
     if page == "Client Retention Predictor":
         st.subheader("📊 Predict Client Retention")
         with st.form("prediction_form"):
@@ -80,10 +76,8 @@ with col2:
             sex = st.selectbox("Sex", ['male', 'female'])
             status = st.selectbox("Status", ['new', 'returning', 'inactive'])
             season = st.selectbox("Season", ['Spring', 'Summer', 'Fall', 'Winter'])
-            month = st.selectbox("Month", [
-                'January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'
-            ])
+            month = st.selectbox("Month", ['January', 'February', 'March', 'April', 'May', 'June',
+                                           'July', 'August', 'September', 'October', 'November', 'December'])
             latest_lang_english = st.selectbox("Latest Language is English", ['yes', 'no'])
             age = st.slider("Age", 18, 100, 35)
             dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
@@ -116,15 +110,14 @@ with col2:
             else:
                 st.warning(f"⚠️ Client may not return (Probability: {round(probability, 2)})")
 
-    # ------------------ Graphs ------------------
     elif page == "Feature Analysis Graphs":
         st.subheader("📈 Feature Importance Plot")
         st.image("Graphs/fiupdate.png", caption="Feature Importance", use_container_width=True)
-        st.markdown("---")
+
+        st.write("---")
         st.subheader("📊 Waterfall Prediction Graph")
         st.image("Graphs/waterfall.png", caption="Waterfall Graph", use_container_width=True)
 
-    # ------------------ Chatbot ------------------
     elif page == "Chatbot":
         st.subheader("🤖 Ask the Client Insights Chatbot")
         user_query = st.text_input("Ask a question about client behavior, pickups, languages, etc.")
