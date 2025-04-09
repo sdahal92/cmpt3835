@@ -24,7 +24,7 @@ with st.form("prediction_form"):
 
     age = st.slider("Age", 18, 100, 35)
     dependents_qty = st.number_input("Number of Dependents", 0, 10, 1)
-    distance_km = st.number_input("Distance to Location (km)", 0.0, 50.0, 5.0)
+    distance_km = st.number_input("Distance to Location (km)", 0.0, 100.0, 5.0)
     num_of_contact_methods = st.slider("Number of Contact Methods", 1, 5, 2)
 
     submitted = st.form_submit_button("Predict")
