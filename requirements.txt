@@ -5,4 +5,11 @@ joblib
 imbalanced-learn
 shap
 matplotlib
+streamlit
+pandas
+scikit-learn
+joblib
+sentence-transformers
+transformers
+torch
 
